@@ -1,4 +1,4 @@
-// Fire Extinguisher Locator Application
+// Fire Extinguisher Locator Application - COMPLETE WITH REAL-TIME STATUS
 class FireExtinguisherApp {
     constructor() {
         this.map = null;
@@ -13,6 +13,12 @@ class FireExtinguisherApp {
         this.MAP_WIDTH = 7972;
         this.MAP_HEIGHT = 5905;
 
+        // NEW: Real-time status thresholds (days)
+        this.STATUS_THRESHOLDS = {
+            WARNING_PERIOD: 15,        // Days before due to show "inspection_due_soon"
+            OVERDUE_THRESHOLD: 30      // Days overdue before "maintenance_required"
+        };
+
         // Status colors
         this.statusColors = {
             good: '#4CAF50',
@@ -26,10 +32,11 @@ class FireExtinguisherApp {
     
     async init() {
         try {
-            console.log('Initializing Fire Extinguisher Locator...');
+            console.log('Initializing Fire Extinguisher Locator with Real-Time Status...');
             await this.loadData();
             this.initMap();
             this.setupEventListeners();
+            this.setupRealTimeStatusUpdates(); // NEW: Real-time updates
             this.updateStats();
             this.populateBuildings();
             console.log('Fire Extinguisher Locator initialized successfully');
@@ -37,6 +44,182 @@ class FireExtinguisherApp {
             console.error('Failed to initialize application:', error);
             this.showError('Failed to load application data');
         }
+    }
+
+    // NEW: Real-time status calculation method
+    calculateRealTimeStatus(extinguisher) {
+        if (!extinguisher.nextDue) {
+            return 'maintenance_required';
+        }
+
+        const today = new Date();
+        const dueDate = new Date(extinguisher.nextDue);
+        
+        // Calculate days until due (positive = future, negative = past)
+        const timeDiff = dueDate.getTime() - today.getTime();
+        const daysUntilDue = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+
+        // Determine status based on industry standards
+        if (daysUntilDue > this.STATUS_THRESHOLDS.WARNING_PERIOD) {
+            return 'good';
+        } else if (daysUntilDue > 0) {
+            return 'inspection_due_soon';
+        } else if (daysUntilDue >= -this.STATUS_THRESHOLDS.OVERDUE_THRESHOLD) {
+            return 'overdue';
+        } else {
+            return 'maintenance_required';
+        }
+    }
+
+    // NEW: Get detailed status information
+    getStatusDetails(extinguisher) {
+        const today = new Date();
+        const dueDate = new Date(extinguisher.nextDue);
+        const timeDiff = dueDate.getTime() - today.getTime();
+        const daysUntilDue = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+        
+        const status = this.calculateRealTimeStatus(extinguisher);
+        
+        const statusDetails = {
+            good: {
+                label: 'Good',
+                description: `Inspection due in ${daysUntilDue} days`,
+                icon: '✅',
+                priority: 'low'
+            },
+            inspection_due_soon: {
+                label: 'Inspection Due Soon',
+                description: `Inspection due in ${daysUntilDue} days`,
+                icon: '⏰',
+                priority: 'medium'
+            },
+            overdue: {
+                label: 'Overdue',
+                description: `Inspection overdue by ${Math.abs(daysUntilDue)} days`,
+                icon: '⚠️',
+                priority: 'high'
+            },
+            maintenance_required: {
+                label: 'Maintenance Required',
+                description: `Critical: ${Math.abs(daysUntilDue)} days overdue`,
+                icon: '🔧',
+                priority: 'critical'
+            }
+        };
+
+        return statusDetails[status];
+    }
+
+    // NEW: Setup automatic status refresh
+    setupRealTimeStatusUpdates() {
+        // Refresh status immediately
+        this.refreshAllStatuses();
+        
+        // Set up automatic refresh every hour (3,600,000 ms)
+        this.statusRefreshInterval = setInterval(() => {
+            this.refreshAllStatuses();
+            console.log('Fire extinguisher statuses automatically refreshed');
+        }, 3600000);
+        
+        // Also refresh at midnight each day
+        this.setupMidnightRefresh();
+        
+        console.log('Real-time status updates enabled');
+    }
+
+    // NEW: Setup midnight refresh for date changes
+    setupMidnightRefresh() {
+        const now = new Date();
+        const midnight = new Date();
+        midnight.setHours(24, 0, 0, 0); // Next midnight
+        
+        const msUntilMidnight = midnight.getTime() - now.getTime();
+        
+        setTimeout(() => {
+            this.refreshAllStatuses();
+            // Set up daily refresh
+            setInterval(() => {
+                this.refreshAllStatuses();
+            }, 24 * 60 * 60 * 1000); // 24 hours
+        }, msUntilMidnight);
+    }
+
+    // NEW: Refresh all extinguisher statuses
+    refreshAllStatuses() {
+        let statusChanges = 0;
+        
+        this.fireExtinguishers.forEach(ext => {
+            const oldStatus = ext.status;
+            const newStatus = this.calculateRealTimeStatus(ext);
+            
+            if (oldStatus !== newStatus) {
+                console.log(`Status changed for ${ext.id}: ${oldStatus} → ${newStatus}`);
+                ext.status = newStatus;
+                statusChanges++;
+            }
+        });
+        
+        if (statusChanges > 0) {
+            // Update UI elements
+            this.updateMarkerColors();
+            this.updateStats();
+            this.populateBuildings();
+            
+            // Show notification if significant changes
+            if (statusChanges > 5) {
+                console.log(`${statusChanges} fire extinguishers changed status`);
+            }
+        }
+    }
+
+    // NEW: Update marker colors on the map
+    updateMarkerColors() {
+        this.markersLayer.eachLayer(layer => {
+            if (layer.extinguisher) {
+                const ext = layer.extinguisher;
+                const newStatus = this.calculateRealTimeStatus(ext);
+                ext.status = newStatus;
+                
+                // Update marker appearance
+                const markerElement = layer.getElement();
+                if (markerElement) {
+                    const markerDiv = markerElement.querySelector('.fire-extinguisher-marker');
+                    if (markerDiv) {
+                        const newColor = this.statusColors[newStatus];
+                        const textColor = this.getContrastColor(newColor);
+                        
+                        markerDiv.style.backgroundColor = newColor;
+                        markerDiv.style.color = textColor;
+                        markerDiv.className = `fire-extinguisher-marker marker-${newStatus}`;
+                    }
+                }
+            }
+        });
+    }
+
+    // NEW: Get priority alerts for dashboard
+    getPriorityAlerts() {
+        const alerts = [];
+        
+        this.fireExtinguishers.forEach(ext => {
+            const statusDetails = this.getStatusDetails(ext);
+            
+            if (ext.status === 'overdue' || ext.status === 'maintenance_required') {
+                alerts.push({
+                    type: ext.status === 'maintenance_required' ? 'critical' : 'warning',
+                    message: `${ext.id}: ${statusDetails.description}`,
+                    extinguisher: ext,
+                    priority: statusDetails.priority
+                });
+            }
+        });
+        
+        // Sort by priority (critical first, then by days overdue)
+        return alerts.sort((a, b) => {
+            if (a.type === 'critical' && b.type !== 'critical') return -1;
+            if (b.type === 'critical' && a.type !== 'critical') return 1;
+            return 0;
+        });
     }
     
     async loadData() {
@@ -151,20 +334,27 @@ class FireExtinguisherApp {
         };
     }
 
+    // ENHANCED: Apply real-time status calculation
     processLoadedData(data) {
         this.buildings = data.buildings || [];
         
-        // Add building metadata to each extinguisher
+        // Add building metadata and calculate real-time status
         this.fireExtinguishers = (data.extinguishers || []).map(ext => {
             const building = this.buildings.find(b => b.id === ext.building);
+            
+            // Calculate real-time status based on current date
+            const realTimeStatus = this.calculateRealTimeStatus(ext);
+            
             return {
                 ...ext,
+                originalStatus: ext.status,     // Keep original for reference
+                status: realTimeStatus,         // Use calculated real-time status
                 buildingName: building ? building.name : 'Unknown Building',
                 buildingColor: building ? building.color : '#999999'
             };
         });
         
-        console.log(`Loaded ${this.fireExtinguishers.length} fire extinguishers across ${this.buildings.length} buildings`);
+        console.log(`Loaded ${this.fireExtinguishers.length} fire extinguishers with real-time status calculation`);
     }
     
     initMap() {
@@ -173,8 +363,8 @@ class FireExtinguisherApp {
         // Create map with CRS.Simple for pixel-based coordinates
         this.map = L.map('map', {
             crs: L.CRS.Simple,
-            minZoom: -3,
-            maxZoom: 2,
+            minZoom: -2,
+            maxZoom: 5,
             zoomControl: true,
             attributionControl: false,
             preferCanvas: true
@@ -213,50 +403,50 @@ class FireExtinguisherApp {
     }
     
     createMarker(extinguisher) {
-        // Direct coordinate mapping - no unproject needed for CRS.Simple with image overlay
-    const latLng = [this.MAP_HEIGHT - extinguisher.y, extinguisher.x];
-    
-    // Create custom marker with status color
-    const markerSize = 30;
-    const color = this.statusColors[extinguisher.status] || '#999999';
-    const textColor = this.getContrastColor(color);
-    
-    const markerHtml = `
-        <div class="fire-extinguisher-marker marker-${extinguisher.status}" 
-             style="width: ${markerSize}px; height: ${markerSize}px; background-color: ${color}; color: ${textColor}; 
-                    border-radius: 50%; display: flex; align-items: center; justify-content: center; 
-                    font-weight: bold; font-size: 10px; border: 2px solid white;">
-            ${extinguisher.id.split('-')[1]}
-        </div>
-    `;
-    
-    const marker = L.marker(latLng, {
-        icon: L.divIcon({
-            html: markerHtml,
-            className: 'custom-marker',
-            iconSize: [markerSize, markerSize],
-            iconAnchor: [markerSize / 2, markerSize / 2]
-        })
-    });
-    
-    // Add popup with detailed information
-    const popupContent = this.createPopupContent(extinguisher);
-    marker.bindPopup(popupContent, {
-        maxWidth: 300,
-        className: 'custom-popup'
-    });
-    
-    // Add click handler
-    marker.on('click', (e) => {
-        this.selectedExtinguisher = extinguisher;
-        marker.openPopup();
-    });
-    
-    // Store reference to extinguisher data
-    marker.extinguisher = extinguisher;
-    
-    return marker;
-}
+        // Direct coordinate mapping - FIXED for proper positioning
+        const latLng = [this.MAP_HEIGHT - extinguisher.y, extinguisher.x];
+        
+        // Create custom marker with status color
+        const markerSize = 24;
+        const color = this.statusColors[extinguisher.status] || '#999999';
+        const textColor = this.getContrastColor(color);
+        
+        const markerHtml = `
+            <div class="fire-extinguisher-marker marker-${extinguisher.status}" 
+                 style="width: ${markerSize}px; height: ${markerSize}px; background-color: ${color}; color: ${textColor}; 
+                        border-radius: 50%; display: flex; align-items: center; justify-content: center; 
+                        font-weight: bold; font-size: 10px; border: 2px solid white;">
+                ${extinguisher.id.split('-')[1]}
+            </div>
+        `;
+        
+        const marker = L.marker(latLng, {
+            icon: L.divIcon({
+                html: markerHtml,
+                className: 'custom-marker',
+                iconSize: [markerSize, markerSize],
+                iconAnchor: [markerSize / 2, markerSize / 2]
+            })
+        });
+        
+        // Add popup with detailed information
+        const popupContent = this.createPopupContent(extinguisher);
+        marker.bindPopup(popupContent, {
+            maxWidth: 300,
+            className: 'custom-popup'
+        });
+        
+        // Add click handler
+        marker.on('click', (e) => {
+            this.selectedExtinguisher = extinguisher;
+            marker.openPopup();
+        });
+        
+        // Store reference to extinguisher data
+        marker.extinguisher = extinguisher;
+        
+        return marker;
+    }
     
     getContrastColor(hexColor) {
         // Convert hex to RGB
@@ -271,20 +461,25 @@ class FireExtinguisherApp {
         return luminance > 0.5 ? '#000000' : '#FFFFFF';
     }
     
+    // ENHANCED: Enhanced popup content with real-time information
     createPopupContent(extinguisher) {
-        const statusText = extinguisher.status.replace(/_/g, ' ').toUpperCase();
-        const statusColor = this.statusColors[extinguisher.status] || '#999999';
+        const statusDetails = this.getStatusDetails(extinguisher);
+        const statusColor = this.statusColors[extinguisher.status];
         
         return `
-            <div style="min-width: 200px; font-family: Arial, sans-serif;">
+            <div style="min-width: 250px; font-family: Arial, sans-serif;">
                 <h3 style="margin: 0 0 8px 0; color: #333;">${extinguisher.id}</h3>
                 <p style="margin: 0 0 4px 0;"><strong>Building:</strong> ${extinguisher.buildingName}</p>
                 <p style="margin: 0 0 4px 0;"><strong>Type:</strong> ${extinguisher.type}</p>
                 <p style="margin: 0 0 4px 0;"><strong>Size:</strong> ${extinguisher.size}</p>
                 <p style="margin: 0 0 4px 0;"><strong>Manufacturer:</strong> ${extinguisher.manufacturer}</p>
                 <p style="margin: 0 0 8px 0;"><strong>Status:</strong> 
-                    <span style="color: ${statusColor}; font-weight: bold;">${statusText}</span>
+                    <span style="color: ${statusColor}; font-weight: bold;">${statusDetails.label}</span>
                 </p>
+                <div style="background: #f5f5f5; padding: 8px; border-radius: 4px; margin: 8px 0;">
+                    <span style="font-size: 16px;">${statusDetails.icon}</span>
+                    <strong> ${statusDetails.description}</strong>
+                </div>
                 <p style="margin: 0 0 8px 0; font-size: 12px; color: #666;">
                     Last: ${extinguisher.lastInspection} | Next: ${extinguisher.nextDue}
                 </p>
@@ -476,44 +671,44 @@ class FireExtinguisherApp {
     }
     
     selectExtinguisher(extinguisherId) {
-       const extinguisher = this.findExtinguisher(extinguisherId);
-    if (!extinguisher) return;
-    
-    // Update search input
-    const searchInput = document.getElementById('searchInput');
-    if (searchInput) {
-        searchInput.value = extinguisher.id;
-    }
-    
-    const searchSuggestions = document.getElementById('searchSuggestions');
-    if (searchSuggestions) {
-        searchSuggestions.classList.remove('visible');
-    }
-    
-    // Clear previous blinking marker
-    this.clearBlinkingMarker();
-    
-    // Find and highlight the marker
-    this.markersLayer.eachLayer(layer => {
-        if (layer.extinguisher && layer.extinguisher.id === extinguisherId) {
-            // Add blinking animation
-            const markerElement = layer.getElement();
-            if (markerElement) {
-                const markerDiv = markerElement.querySelector('.fire-extinguisher-marker');
-                if (markerDiv) {
-                    markerDiv.classList.add('marker-blinking');
-                    this.blinkingMarker = markerDiv;
-                }
-            }
-            
-            // Zoom to marker - FIXED coordinate transformation
-            const latLng = [this.MAP_HEIGHT - extinguisher.y, extinguisher.x];
-            this.map.setView(latLng, 1);
+        const extinguisher = this.findExtinguisher(extinguisherId);
+        if (!extinguisher) return;
+        
+        // Update search input
+        const searchInput = document.getElementById('searchInput');
+        if (searchInput) {
+            searchInput.value = extinguisher.id;
         }
-    });
-    
-    this.selectedExtinguisher = extinguisher;
-}
+        
+        const searchSuggestions = document.getElementById('searchSuggestions');
+        if (searchSuggestions) {
+            searchSuggestions.classList.remove('visible');
+        }
+        
+        // Clear previous blinking marker
+        this.clearBlinkingMarker();
+        
+        // Find and highlight the marker
+        this.markersLayer.eachLayer(layer => {
+            if (layer.extinguisher && layer.extinguisher.id === extinguisherId) {
+                // Add blinking animation
+                const markerElement = layer.getElement();
+                if (markerElement) {
+                    const markerDiv = markerElement.querySelector('.fire-extinguisher-marker');
+                    if (markerDiv) {
+                        markerDiv.classList.add('marker-blinking');
+                        this.blinkingMarker = markerDiv;
+                    }
+                }
+                
+                // Zoom to marker - FIXED coordinate transformation
+                const latLng = [this.MAP_HEIGHT - extinguisher.y, extinguisher.x];
+                this.map.setView(latLng, 3);
+            }
+        });
+        
+        this.selectedExtinguisher = extinguisher;
+    }
     
     clearSearch() {
         const searchInput = document.getElementById('searchInput');
@@ -573,6 +768,7 @@ class FireExtinguisherApp {
         });
     }
     
+    // ENHANCED: Enhanced updateStats with real-time calculations
     updateStats() {
         const stats = {
             total: this.fireExtinguishers.length,
@@ -583,9 +779,12 @@ class FireExtinguisherApp {
         };
         
         this.fireExtinguishers.forEach(ext => {
+            // Recalculate status to ensure real-time accuracy
+            ext.status = this.calculateRealTimeStatus(ext);
             stats[ext.status] = (stats[ext.status] || 0) + 1;
         });
         
+        // Update dashboard elements
         const totalCount = document.getElementById('totalCount');
         const goodCount = document.getElementById('goodCount');
         const dueSoonCount = document.getElementById('dueSoonCount');
@@ -597,6 +796,12 @@ class FireExtinguisherApp {
         if (dueSoonCount) dueSoonCount.textContent = stats.inspection_due_soon;
         if (overdueCount) overdueCount.textContent = stats.overdue;
         if (maintenanceCount) maintenanceCount.textContent = stats.maintenance_required;
+        
+        // Update last refresh timestamp
+        const lastUpdate = document.getElementById('lastStatusUpdate');
+        if (lastUpdate) {
+            lastUpdate.textContent = `Last updated: ${new Date().toLocaleString()}`;
+        }
     }
     
     populateBuildings() {
@@ -647,22 +852,22 @@ class FireExtinguisherApp {
     
     focusOnBuilding(buildingId) {
         const buildingExtinguishers = this.fireExtinguishers.filter(ext => ext.building === buildingId);
-    
-    if (buildingExtinguishers.length === 0) return;
-    
-    // Calculate center and bounds
-    const minX = Math.min(...buildingExtinguishers.map(ext => ext.x));
-    const maxX = Math.max(...buildingExtinguishers.map(ext => ext.x));
-    const minY = Math.min(...buildingExtinguishers.map(ext => ext.y));
-    const maxY = Math.max(...buildingExtinguishers.map(ext => ext.y));
-    
-    const centerX = (minX + maxX) / 2;
-    const centerY = (minY + maxY) / 2;
-    
-    // Convert to leaflet coordinates - FIXED
-    const latLng = [this.MAP_HEIGHT - centerY, centerX];
-    this.map.setView(latLng, 1);
-}
+        
+        if (buildingExtinguishers.length === 0) return;
+        
+        // Calculate center and bounds
+        const minX = Math.min(...buildingExtinguishers.map(ext => ext.x));
+        const maxX = Math.max(...buildingExtinguishers.map(ext => ext.x));
+        const minY = Math.min(...buildingExtinguishers.map(ext => ext.y));
+        const maxY = Math.max(...buildingExtinguishers.map(ext => ext.y));
+        
+        const centerX = (minX + maxX) / 2;
+        const centerY = (minY + maxY) / 2;
+        
+        // Convert to leaflet coordinates - FIXED
+        const latLng = [this.MAP_HEIGHT - centerY, centerX];
+        this.map.setView(latLng, 2);
+    }
     
     showExtinguisherDetails(extinguisherId) {
         const extinguisher = this.findExtinguisher(extinguisherId);
@@ -684,7 +889,7 @@ class FireExtinguisherApp {
             return;
         }
         
-        const statusText = extinguisher.status.replace(/_/g, ' ').toUpperCase();
+        const statusDetails = this.getStatusDetails(extinguisher);
         const statusColor = this.statusColors[extinguisher.status] || '#999999';
         
         extinguisherInfo.innerHTML = `
@@ -718,10 +923,18 @@ class FireExtinguisherApp {
                 </div>
                 
                 <div class="detail-group">
-                    <h3>Status & Inspection</h3>
+                    <h3>Real-Time Status & Inspection</h3>
                     <div class="detail-row">
                         <span class="detail-label">Status:</span>
-                        <span class="detail-value" style="color: ${statusColor}; font-weight: bold;">${statusText}</span>
+                        <span class="detail-value" style="color: ${statusColor}; font-weight: bold;">${statusDetails.label}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Description:</span>
+                        <span class="detail-value">${statusDetails.description}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Priority:</span>
+                        <span class="detail-value">${statusDetails.priority.toUpperCase()}</span>
                     </div>
                     <div class="detail-row">
                         <span class="detail-label">Last Inspection:</span>
@@ -749,7 +962,11 @@ class FireExtinguisherApp {
                 exported_at: new Date().toISOString(),
                 total_count: this.fireExtinguishers.length,
                 buildings: this.buildings,
-                fire_extinguishers: this.fireExtinguishers
+                fire_extinguishers: this.fireExtinguishers.map(ext => ({
+                    ...ext,
+                    real_time_status: ext.status,
+                    original_status: ext.originalStatus
+                }))
             };
             const json = JSON.stringify(exportData, null, 2);
             this.downloadFile(json, `fire_extinguishers_${timestamp}.json`, 'application/json');
@@ -757,10 +974,15 @@ class FireExtinguisherApp {
     }
     
     convertToCSV(data) {
-        const headers = ['id', 'building', 'buildingName', 'x', 'y', 'status', 'type', 'size', 'manufacturer', 'lastInspection', 'nextDue'];
+        const headers = ['id', 'building', 'buildingName', 'x', 'y', 'real_time_status', 'original_status', 'type', 'size', 'manufacturer', 'lastInspection', 'nextDue'];
         const csvContent = [
             headers.join(','),
-            ...data.map(row => headers.map(header => `"${row[header] || ''}"`).join(','))
+            ...data.map(row => headers.map(header => {
+                const value = header === 'real_time_status' ? row.status : 
+                            header === 'original_status' ? row.originalStatus : 
+                            row[header];
+                return `"${value || ''}"`;
+            }).join(','))
         ].join('\n');
         
         return csvContent;
@@ -786,6 +1008,6 @@ class FireExtinguisherApp {
 
 // Initialize the application when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('DOM loaded, initializing app...');
+    console.log('DOM loaded, initializing app with complete real-time status...');
     window.app = new FireExtinguisherApp();
 });
