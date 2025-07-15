@@ -21,7 +21,7 @@
   --color-info: rgba(98, 108, 113, 1);
   --color-focus-ring: rgba(33, 128, 141, 0.4);
   --color-select-caret: rgba(19, 52, 59, 0.8);
-
+  
   /* Common style patterns */
   --focus-ring: 0 0 0 3px var(--color-focus-ring);
   --focus-outline: 2px solid var(--color-primary);
@@ -127,7 +127,7 @@
       inset 0 -1px 0 rgba(0, 0, 0, 0.15);
     --button-border-secondary: rgba(119, 124, 124, 0.2);
     --color-border-secondary: rgba(119, 124, 124, 0.2);
-    --color-select-caret: rgba(204, 202, 202, 0.8);
+    --color-select-caret: rgba(245, 245, 245, 0.8);
 
     /* Common style patterns - updated for dark mode */
     --focus-ring: 0 0 0 3px var(--color-focus-ring);
@@ -142,9 +142,7 @@
     --color-error-rgb: 255, 84, 89;
     --color-warning-rgb: 230, 129, 97;
     --color-info-rgb: 167, 169, 169;
-  
   }
-  
 }
 
 /* Data attribute for manual theme switching */
