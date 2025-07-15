@@ -297,42 +297,64 @@ class FireExtinguisherApp {
     }
 
     convertCSVToJSON(csvData) {
-        // Process CSV rows to match expected format
-        const extinguishers = csvData.map(row => ({
-            id: row.id || row.ID,
-            building: parseInt(row.building) || parseInt(row.Building),
-            x: parseFloat(row.x) || parseFloat(row.X),
-            y: parseFloat(row.y) || parseFloat(row.Y),
-            status: row.status || row.Status,
-            type: row.type || row.Type,
-            size: row.size || row.Size,
-            manufacturer: row.manufacturer || row.Manufacturer,
-            lastInspection: row.lastInspection || row['Last Inspection'],
-            nextDue: row.nextDue || row['Next Due']
-        }));
-        
-        // Dynamically create buildings from the data
-        const buildingMap = new Map();
-        extinguishers.forEach(ext => {
-            if (!buildingMap.has(ext.building)) {
-                buildingMap.set(ext.building, []);
-            }
-            buildingMap.get(ext.building).push(ext);
-        });
-        
-        const buildingColors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FECA57', '#FF9FF3'];
-        const buildings = Array.from(buildingMap.entries()).map(([id, exts], index) => ({
-            id,
-            name: `Building-${id}`,
-            extinguishers: exts.length,
-            color: buildingColors[index % buildingColors.length]
-        }));
-        
-        return {
-            buildings,
-            extinguishers
-        };
+       // Process CSV rows to match expected format including new fields
+    const extinguishers = csvData.map(row => ({
+        id: row.id || row.ID,
+        building: parseInt(row.building) || parseInt(row.Building),
+        x: parseFloat(row.x) || parseFloat(row.X),
+        y: parseFloat(row.y) || parseFloat(row.Y),
+        status: row.status || row.Status,
+        type: row.type || row.Type,
+        size: row.size || row.Size,
+        manufacturer: row.manufacturer || row.Manufacturer,
+        lastInspection: row.lastInspection || row['Last Inspection'],
+        nextDue: row.nextDue || row['Next Due'],
+        // NEW FIELDS
+        isoCategory: row.isoCategory || row['ISO Category'] || row.isocategory || this.determineISOCategory(row.type),
+        inspectionStickerID: row.inspectionStickerID || row['Inspection Sticker ID'] || row.stickerId || 'STK-NOT-ASSIGNED'
+    }));
+    
+    // Dynamically create buildings from the data
+    const buildingMap = new Map();
+    extinguishers.forEach(ext => {
+        if (!buildingMap.has(ext.building)) {
+            buildingMap.set(ext.building, []);
+        }
+        buildingMap.get(ext.building).push(ext);
+    });
+    
+    const buildingColors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FECA57', '#FF9FF3'];
+    const buildings = Array.from(buildingMap.entries()).map(([id, exts], index) => ({
+        id,
+        name: `Building-${id}`,
+        extinguishers: exts.length,
+        color: buildingColors[index % buildingColors.length]
+    }));
+    
+    return {
+        buildings,
+        extinguishers
+    };
+}
+
+// NEW: Method to determine ISO category from extinguisher type
+determineISOCategory(type) {
+    if (!type) return 1;
+    
+    const typeUpper = type.toString().toUpperCase();
+    
+    if (typeUpper === 'CO2' || typeUpper.startsWith('CO')) {
+        return 5; // Category 5: Carbon dioxide extinguishers
+    } else if (typeUpper === 'FOAM') {
+        return 1; // Category 1: Stored-pressure with foam
+    } else if (typeUpper === 'POWDER') {
+        return 2; // Category 2: Stored-pressure with powder
+    } else if (typeUpper === 'WATER') {
+        return 1; // Category 1: Stored-pressure with water
+    } else {
+        return 1; // Default to Category 1
     }
+}
 
     // ENHANCED: Apply real-time status calculation
     processLoadedData(data) {
@@ -463,33 +485,43 @@ class FireExtinguisherApp {
     
     // ENHANCED: Enhanced popup content with real-time information
     createPopupContent(extinguisher) {
-        const statusDetails = this.getStatusDetails(extinguisher);
-        const statusColor = this.statusColors[extinguisher.status];
-        
-        return `
-            <div style="min-width: 250px; font-family: Arial, sans-serif;">
-                <h3 style="margin: 0 0 8px 0; color: #333;">${extinguisher.id}</h3>
-                <p style="margin: 0 0 4px 0;"><strong>Building:</strong> ${extinguisher.buildingName}</p>
-                <p style="margin: 0 0 4px 0;"><strong>Type:</strong> ${extinguisher.type}</p>
-                <p style="margin: 0 0 4px 0;"><strong>Size:</strong> ${extinguisher.size}</p>
-                <p style="margin: 0 0 4px 0;"><strong>Manufacturer:</strong> ${extinguisher.manufacturer}</p>
-                <p style="margin: 0 0 8px 0;"><strong>Status:</strong> 
-                    <span style="color: ${statusColor}; font-weight: bold;">${statusDetails.label}</span>
-                </p>
-                <div style="background: #f5f5f5; padding: 8px; border-radius: 4px; margin: 8px 0;">
-                    <span style="font-size: 16px;">${statusDetails.icon}</span>
-                    <strong> ${statusDetails.description}</strong>
-                </div>
-                <p style="margin: 0 0 8px 0; font-size: 12px; color: #666;">
-                    Last: ${extinguisher.lastInspection} | Next: ${extinguisher.nextDue}
-                </p>
-                <button onclick="window.app.showExtinguisherDetails('${extinguisher.id}')" 
-                        style="background: #007cba; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;">
-                    View Details
-                </button>
+    const statusDetails = this.getStatusDetails(extinguisher);
+    const statusColor = this.statusColors[extinguisher.status];
+    
+    // Format ISO category for display
+    const isoCategoryText = `ISO 11602-2:2002 Category ${extinguisher.isoCategory}`;
+    
+    return `
+        <div style="min-width: 300px; font-family: Arial, sans-serif;">
+            <h3 style="margin: 0 0 8px 0; color: #333;">${extinguisher.id}</h3>
+            <p style="margin: 0 0 4px 0;"><strong>Building:</strong> ${extinguisher.buildingName}</p>
+            <p style="margin: 0 0 4px 0;"><strong>Type:</strong> ${extinguisher.type}</p>
+            <p style="margin: 0 0 4px 0;"><strong>Size:</strong> ${extinguisher.size}</p>
+            <p style="margin: 0 0 4px 0;"><strong>Manufacturer:</strong> ${extinguisher.manufacturer}</p>
+            
+            <!-- NEW COMPLIANCE FIELDS -->
+            <div style="background: #f8f9fa; padding: 8px; border-radius: 4px; margin: 8px 0;">
+                <p style="margin: 0 0 4px 0; font-size: 12px;"><strong>ISO Category:</strong> ${isoCategoryText}</p>
+                <p style="margin: 0; font-size: 12px;"><strong>Inspection Sticker:</strong> ${extinguisher.inspectionStickerID}</p>
             </div>
-        `;
-    }
+            
+            <p style="margin: 0 0 8px 0;"><strong>Status:</strong> 
+                <span style="color: ${statusColor}; font-weight: bold;">${statusDetails.label}</span>
+            </p>
+            <div style="background: #f5f5f5; padding: 8px; border-radius: 4px; margin: 8px 0;">
+                <span style="font-size: 16px;">${statusDetails.icon}</span>
+                <strong> ${statusDetails.description}</strong>
+            </div>
+            <p style="margin: 0 0 8px 0; font-size: 12px; color: #666;">
+                Last: ${extinguisher.lastInspection} | Next: ${extinguisher.nextDue}
+            </p>
+            <button onclick="window.app.showExtinguisherDetails('${extinguisher.id}')" 
+                    style="background: #007cba; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;">
+                View Details
+            </button>
+        </div>
+    `;
+}
     
     setupEventListeners() {
         console.log('Setting up event listeners...');
@@ -614,61 +646,64 @@ class FireExtinguisherApp {
         console.log('Event listeners set up successfully');
     }
     
-    handleSearch(query) {
-        const searchSuggestions = document.getElementById('searchSuggestions');
-        
-        if (!query.trim()) {
-            if (searchSuggestions) {
-                searchSuggestions.classList.remove('visible');
-            }
-            return;
+   handleSearch(query) {
+    const searchSuggestions = document.getElementById('searchSuggestions');
+    
+    if (!query.trim()) {
+        if (searchSuggestions) {
+            searchSuggestions.classList.remove('visible');
         }
-        
-        // Find matching extinguishers (fuzzy search)
-        const matches = this.fireExtinguishers.filter(ext => 
-            ext.id.toLowerCase().includes(query.toLowerCase()) ||
-            ext.buildingName.toLowerCase().includes(query.toLowerCase()) ||
-            ext.type.toLowerCase().includes(query.toLowerCase()) ||
-            ext.manufacturer.toLowerCase().includes(query.toLowerCase())
-        ).slice(0, 10);
-        
-        if (!searchSuggestions) return;
-        
-        if (matches.length === 0) {
-            searchSuggestions.innerHTML = '<div class="suggestion-item">No results found</div>';
-            searchSuggestions.classList.add('visible');
-            return;
-        }
-        
-        // Create suggestion items
-        searchSuggestions.innerHTML = matches.map(ext => `
-            <div class="suggestion-item" data-id="${ext.id}" tabindex="0">
-                <strong>${ext.id}</strong> - ${ext.buildingName}
-                <br><small style="color: #666;">${ext.type} (${ext.size}) - ${ext.manufacturer}</small>
-            </div>
-        `).join('');
-        
+        return;
+    }
+    
+    // Enhanced search including new compliance fields
+    const matches = this.fireExtinguishers.filter(ext => 
+        ext.id.toLowerCase().includes(query.toLowerCase()) ||
+        ext.buildingName.toLowerCase().includes(query.toLowerCase()) ||
+        ext.type.toLowerCase().includes(query.toLowerCase()) ||
+        ext.manufacturer.toLowerCase().includes(query.toLowerCase()) ||
+        ext.inspectionStickerID.toLowerCase().includes(query.toLowerCase()) ||
+        ext.isoCategory.toString().includes(query)
+    ).slice(0, 10);
+    
+    if (!searchSuggestions) return;
+    
+    if (matches.length === 0) {
+        searchSuggestions.innerHTML = '<div class="suggestion-item">No results found</div>';
         searchSuggestions.classList.add('visible');
+        return;
+    }
+    
+    // Enhanced suggestion display with compliance info
+    searchSuggestions.innerHTML = matches.map(ext => `
+        <div class="suggestion-item" data-id="${ext.id}" tabindex="0">
+            <strong>${ext.id}</strong> - ${ext.buildingName}
+            <br><small style="color: #666;">${ext.type} (${ext.size}) - ${ext.manufacturer}</small>
+            <br><small style="color: #888;">ISO Cat. ${ext.isoCategory} | Sticker: ${ext.inspectionStickerID}</small>
+        </div>
+    `).join('');
+    
+    searchSuggestions.classList.add('visible');
+    
+    // Add click and keyboard handlers to suggestions
+    searchSuggestions.querySelectorAll('.suggestion-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const extinguisherId = item.getAttribute('data-id');
+            if (extinguisherId) {
+                this.selectExtinguisher(extinguisherId);
+            }
+        });
         
-        // Add click and keyboard handlers to suggestions
-        searchSuggestions.querySelectorAll('.suggestion-item').forEach(item => {
-            item.addEventListener('click', () => {
+        item.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
                 const extinguisherId = item.getAttribute('data-id');
                 if (extinguisherId) {
                     this.selectExtinguisher(extinguisherId);
                 }
-            });
-            
-            item.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
-                    const extinguisherId = item.getAttribute('data-id');
-                    if (extinguisherId) {
-                        this.selectExtinguisher(extinguisherId);
-                    }
-                }
-            });
+            }
         });
-    }
+    });
+}
     
     selectExtinguisher(extinguisherId) {
         const extinguisher = this.findExtinguisher(extinguisherId);
@@ -878,78 +913,112 @@ class FireExtinguisherApp {
     }
     
     showExtinguisherInfo(extinguisher) {
-        const extinguisherInfo = document.getElementById('extinguisherInfo');
-        
-        if (!extinguisherInfo) return;
-        
-        if (!extinguisher) {
-            extinguisherInfo.innerHTML = 
-                '<p>No fire extinguisher selected. Click on a marker to view details.</p>';
-            this.showModal('infoModal');
-            return;
-        }
-        
-        const statusDetails = this.getStatusDetails(extinguisher);
-        const statusColor = this.statusColors[extinguisher.status] || '#999999';
-        
-        extinguisherInfo.innerHTML = `
-            <div class="extinguisher-details">
-                <div class="detail-group">
-                    <h3>Basic Information</h3>
-                    <div class="detail-row">
-                        <span class="detail-label">ID:</span>
-                        <span class="detail-value">${extinguisher.id}</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="detail-label">Building:</span>
-                        <span class="detail-value">${extinguisher.buildingName}</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="detail-label">Type:</span>
-                        <span class="detail-value">${extinguisher.type}</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="detail-label">Size:</span>
-                        <span class="detail-value">${extinguisher.size}</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="detail-label">Manufacturer:</span>
-                        <span class="detail-value">${extinguisher.manufacturer}</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="detail-label">Location:</span>
-                        <span class="detail-value">${extinguisher.x}, ${extinguisher.y}</span>
-                    </div>
+    const extinguisherInfo = document.getElementById('extinguisherInfo');
+    
+    if (!extinguisherInfo) return;
+    
+    if (!extinguisher) {
+        extinguisherInfo.innerHTML = 
+            '<p>No fire extinguisher selected. Click on a marker to view details.</p>';
+        this.showModal('infoModal');
+        return;
+    }
+    
+    const statusDetails = this.getStatusDetails(extinguisher);
+    const statusColor = this.statusColors[extinguisher.status] || '#999999';
+    
+    // Format ISO category with description
+    const isoCategoryText = `Category ${extinguisher.isoCategory}`;
+    const isoCategoryDesc = this.getISOCategoryDescription(extinguisher.isoCategory);
+    
+    extinguisherInfo.innerHTML = `
+        <div class="extinguisher-details">
+            <div class="detail-group">
+                <h3>Basic Information</h3>
+                <div class="detail-row">
+                    <span class="detail-label">ID:</span>
+                    <span class="detail-value">${extinguisher.id}</span>
                 </div>
-                
-                <div class="detail-group">
-                    <h3>Real-Time Status & Inspection</h3>
-                    <div class="detail-row">
-                        <span class="detail-label">Status:</span>
-                        <span class="detail-value" style="color: ${statusColor}; font-weight: bold;">${statusDetails.label}</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="detail-label">Description:</span>
-                        <span class="detail-value">${statusDetails.description}</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="detail-label">Priority:</span>
-                        <span class="detail-value">${statusDetails.priority.toUpperCase()}</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="detail-label">Last Inspection:</span>
-                        <span class="detail-value">${extinguisher.lastInspection}</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="detail-label">Next Due:</span>
-                        <span class="detail-value">${extinguisher.nextDue}</span>
-                    </div>
+                <div class="detail-row">
+                    <span class="detail-label">Building:</span>
+                    <span class="detail-value">${extinguisher.buildingName}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Type:</span>
+                    <span class="detail-value">${extinguisher.type}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Size:</span>
+                    <span class="detail-value">${extinguisher.size}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Manufacturer:</span>
+                    <span class="detail-value">${extinguisher.manufacturer}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Location:</span>
+                    <span class="detail-value">${extinguisher.x}, ${extinguisher.y}</span>
                 </div>
             </div>
-        `;
-        
-        this.showModal('infoModal');
-    }
+            
+            <!-- NEW COMPLIANCE SECTION -->
+            <div class="detail-group">
+                <h3>Compliance & Standards</h3>
+                <div class="detail-row">
+                    <span class="detail-label">ISO 11602-2:2002:</span>
+                    <span class="detail-value">${isoCategoryText}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Category Type:</span>
+                    <span class="detail-value" style="font-size: 12px; color: #666;">${isoCategoryDesc}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Inspection Sticker ID:</span>
+                    <span class="detail-value">${extinguisher.inspectionStickerID}</span>
+                </div>
+            </div>
+            
+            <div class="detail-group">
+                <h3>Real-Time Status & Inspection</h3>
+                <div class="detail-row">
+                    <span class="detail-label">Status:</span>
+                    <span class="detail-value" style="color: ${statusColor}; font-weight: bold;">${statusDetails.label}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Description:</span>
+                    <span class="detail-value">${statusDetails.description}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Priority:</span>
+                    <span class="detail-value">${statusDetails.priority.toUpperCase()}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Last Inspection:</span>
+                    <span class="detail-value">${extinguisher.lastInspection}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Next Due:</span>
+                    <span class="detail-value">${extinguisher.nextDue}</span>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    this.showModal('infoModal');
+}
+
+// NEW: Method to get ISO category descriptions
+getISOCategoryDescription(category) {
+    const descriptions = {
+        1: "Stored-pressure with water/foam",
+        2: "Stored-pressure with powder/halon", 
+        3: "Gas-cartridge with water/foam",
+        4: "Gas-cartridge with powder",
+        5: "Carbon dioxide extinguishers"
+    };
+    return descriptions[category] || "Unknown category";
+}
+
     
     exportData(format) {
         const timestamp = new Date().toISOString().split('T')[0];
@@ -974,19 +1043,26 @@ class FireExtinguisherApp {
     }
     
     convertToCSV(data) {
-        const headers = ['id', 'building', 'buildingName', 'x', 'y', 'real_time_status', 'original_status', 'type', 'size', 'manufacturer', 'lastInspection', 'nextDue'];
-        const csvContent = [
-            headers.join(','),
-            ...data.map(row => headers.map(header => {
-                const value = header === 'real_time_status' ? row.status : 
-                            header === 'original_status' ? row.originalStatus : 
-                            row[header];
-                return `"${value || ''}"`;
-            }).join(','))
-        ].join('\n');
-        
-        return csvContent;
-    }
+    const headers = [
+        'id', 'building', 'buildingName', 'x', 'y', 
+        'real_time_status', 'original_status', 'type', 'size', 
+        'manufacturer', 'lastInspection', 'nextDue',
+        'isoCategory', 'inspectionStickerID'  // NEW COMPLIANCE FIELDS
+    ];
+    
+    const csvContent = [
+        headers.join(','),
+        ...data.map(row => headers.map(header => {
+            const value = header === 'real_time_status' ? row.status : 
+                        header === 'original_status' ? row.originalStatus : 
+                        row[header];
+            return `"${value || ''}"`;
+        }).join(','))
+    ].join('\n');
+    
+    return csvContent;
+}
+
     
     downloadFile(content, filename, contentType) {
         const blob = new Blob([content], { type: contentType });
