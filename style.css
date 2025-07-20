@@ -22,6 +22,54 @@
   --color-focus-ring: rgba(33, 128, 141, 0.4);
   --color-select-caret: rgba(19, 52, 59, 0.8);
   
+/* Enhanced search result styling */
+.suggestion-item {
+    padding: 12px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--color-border);
+    transition: background-color var(--duration-fast) var(--ease-standard);
+}
+
+.suggestion-item:hover {
+    background: var(--color-secondary);
+}
+
+.match-main {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.match-subtitle {
+    font-size: 12px;
+    color: var(--color-text-secondary);
+}
+
+.relevance-score {
+    font-size: 10px;
+    background: var(--color-primary);
+    color: var(--color-btn-primary-text);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+}
+
+mark {
+    background: var(--color-warning);
+    color: var(--color-text);
+    padding: 1px 2px;
+    border-radius: 2px;
+}
+
+/* Dark mode adjustments */
+@media (prefers-color-scheme: dark) {
+    mark {
+        background: rgba(230, 129, 97, 0.3);
+        color: var(--color-text);
+    }
+}
+
+
   /* Common style patterns */
   --focus-ring: 0 0 0 3px var(--color-focus-ring);
   --focus-outline: 2px solid var(--color-primary);

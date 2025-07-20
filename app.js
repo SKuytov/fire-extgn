@@ -1,11 +1,11 @@
-// Fire Extinguisher Locator Application - COMPLETE WITH REAL-TIME STATUS
-class FireExtinguisherApp {
+// Fire Safety Station Manager - Complete Station-Based System
+class FireSafetyStationApp {
     constructor() {
         this.map = null;
         this.markersLayer = null;
-        this.fireExtinguishers = [];
+        this.stations = [];
         this.buildings = [];
-        this.selectedExtinguisher = null;
+        this.selectedStation = null;
         this.searchTimeout = null;
         this.blinkingMarker = null;
         
@@ -13,13 +13,13 @@ class FireExtinguisherApp {
         this.MAP_WIDTH = 7972;
         this.MAP_HEIGHT = 5905;
 
-        // NEW: Real-time status thresholds (days)
+        // Real-time status thresholds (days)
         this.STATUS_THRESHOLDS = {
-            WARNING_PERIOD: 15,        // Days before due to show "inspection_due_soon"
-            OVERDUE_THRESHOLD: 30      // Days overdue before "maintenance_required"
+            WARNING_PERIOD: 15,
+            OVERDUE_THRESHOLD: 30
         };
 
-        // Status colors
+        // Status colors and priority order
         this.statusColors = {
             good: '#4CAF50',
             inspection_due_soon: '#FF9800',
@@ -27,39 +27,38 @@ class FireExtinguisherApp {
             maintenance_required: '#FF5722'
         };
         
+        this.statusPriority = ['maintenance_required', 'overdue', 'inspection_due_soon', 'good'];
+        
         this.init();
     }
     
     async init() {
         try {
-            console.log('Initializing Fire Extinguisher Locator with Real-Time Status...');
+            console.log('Initializing Fire Safety Station Manager...');
             await this.loadData();
             this.initMap();
             this.setupEventListeners();
-            this.setupRealTimeStatusUpdates(); // NEW: Real-time updates
+            this.setupRealTimeStatusUpdates();
             this.updateStats();
             this.populateBuildings();
-            console.log('Fire Extinguisher Locator initialized successfully');
+            console.log('Fire Safety Station Manager initialized successfully');
         } catch (error) {
             console.error('Failed to initialize application:', error);
             this.showError('Failed to load application data');
         }
     }
 
-    // NEW: Real-time status calculation method
-    calculateRealTimeStatus(extinguisher) {
-        if (!extinguisher.nextDue) {
+    // Real-time status calculation for individual assets
+    calculateRealTimeStatus(asset) {
+        if (!asset.nextDue) {
             return 'maintenance_required';
         }
 
         const today = new Date();
-        const dueDate = new Date(extinguisher.nextDue);
-        
-        // Calculate days until due (positive = future, negative = past)
+        const dueDate = new Date(asset.nextDue);
         const timeDiff = dueDate.getTime() - today.getTime();
         const daysUntilDue = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
 
-        // Determine status based on industry standards
         if (daysUntilDue > this.STATUS_THRESHOLDS.WARNING_PERIOD) {
             return 'good';
         } else if (daysUntilDue > 0) {
@@ -71,20 +70,34 @@ class FireExtinguisherApp {
         }
     }
 
-    // NEW: Get detailed status information
-    getStatusDetails(extinguisher) {
+    // Calculate station status as worst asset status
+    getStationStatus(station) {
+        if (!station.assets || station.assets.length === 0) {
+            return 'maintenance_required';
+        }
+        
+        return station.assets.reduce((worstStatus, asset) => {
+            const assetStatus = this.calculateRealTimeStatus(asset);
+            const currentPriority = this.statusPriority.indexOf(worstStatus);
+            const assetPriority = this.statusPriority.indexOf(assetStatus);
+            return assetPriority < currentPriority ? assetStatus : worstStatus;
+        }, 'good');
+    }
+
+    // Get detailed status information for assets
+    getStatusDetails(asset) {
         const today = new Date();
-        const dueDate = new Date(extinguisher.nextDue);
+        const dueDate = new Date(asset.nextDue);
         const timeDiff = dueDate.getTime() - today.getTime();
         const daysUntilDue = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
         
-        const status = this.calculateRealTimeStatus(extinguisher);
+        const status = this.calculateRealTimeStatus(asset);
         
         const statusDetails = {
             good: {
                 label: 'Good',
                 description: `Inspection due in ${daysUntilDue} days`,
-                icon: '✅',
+                icon: '✅ ',
                 priority: 'low'
             },
             inspection_due_soon: {
@@ -110,167 +123,129 @@ class FireExtinguisherApp {
         return statusDetails[status];
     }
 
-    // NEW: Setup automatic status refresh
+    // Setup automatic status refresh
     setupRealTimeStatusUpdates() {
-        // Refresh status immediately
         this.refreshAllStatuses();
         
-        // Set up automatic refresh every hour (3,600,000 ms)
         this.statusRefreshInterval = setInterval(() => {
             this.refreshAllStatuses();
-            console.log('Fire extinguisher statuses automatically refreshed');
+            console.log('Station statuses automatically refreshed');
         }, 3600000);
         
-        // Also refresh at midnight each day
         this.setupMidnightRefresh();
-        
         console.log('Real-time status updates enabled');
     }
 
-    // NEW: Setup midnight refresh for date changes
     setupMidnightRefresh() {
         const now = new Date();
         const midnight = new Date();
-        midnight.setHours(24, 0, 0, 0); // Next midnight
+        midnight.setHours(24, 0, 0, 0);
         
         const msUntilMidnight = midnight.getTime() - now.getTime();
         
         setTimeout(() => {
             this.refreshAllStatuses();
-            // Set up daily refresh
             setInterval(() => {
                 this.refreshAllStatuses();
-            }, 24 * 60 * 60 * 1000); // 24 hours
+            }, 24 * 60 * 60 * 1000);
         }, msUntilMidnight);
     }
 
-    // NEW: Refresh all extinguisher statuses
+    // Refresh all station and asset statuses
     refreshAllStatuses() {
         let statusChanges = 0;
         
-        this.fireExtinguishers.forEach(ext => {
-            const oldStatus = ext.status;
-            const newStatus = this.calculateRealTimeStatus(ext);
+        this.stations.forEach(station => {
+            station.assets.forEach(asset => {
+                const oldStatus = asset.status;
+                const newStatus = this.calculateRealTimeStatus(asset);
+                
+                if (oldStatus !== newStatus) {
+                    console.log(`Status changed for ${asset.assetId}: ${oldStatus} → ${newStatus}`);
+                    asset.status = newStatus;
+                    statusChanges++;
+                }
+            });
             
-            if (oldStatus !== newStatus) {
-                console.log(`Status changed for ${ext.id}: ${oldStatus} → ${newStatus}`);
-                ext.status = newStatus;
+            // Update station status
+            const oldStationStatus = station.status;
+            const newStationStatus = this.getStationStatus(station);
+            if (oldStationStatus !== newStationStatus) {
+                station.status = newStationStatus;
                 statusChanges++;
             }
         });
         
         if (statusChanges > 0) {
-            // Update UI elements
             this.updateMarkerColors();
             this.updateStats();
             this.populateBuildings();
-            
-            // Show notification if significant changes
-            if (statusChanges > 5) {
-                console.log(`${statusChanges} fire extinguishers changed status`);
-            }
         }
     }
 
-    // NEW: Update marker colors on the map
+    // Update marker colors on the map
     updateMarkerColors() {
         this.markersLayer.eachLayer(layer => {
-            if (layer.extinguisher) {
-                const ext = layer.extinguisher;
-                const newStatus = this.calculateRealTimeStatus(ext);
-                ext.status = newStatus;
+            if (layer.station) {
+                const station = layer.station;
+                const newStatus = this.getStationStatus(station);
+                station.status = newStatus;
                 
-                // Update marker appearance
                 const markerElement = layer.getElement();
                 if (markerElement) {
-                    const markerDiv = markerElement.querySelector('.fire-extinguisher-marker');
+                    const markerDiv = markerElement.querySelector('.station-marker');
                     if (markerDiv) {
                         const newColor = this.statusColors[newStatus];
                         const textColor = this.getContrastColor(newColor);
                         
                         markerDiv.style.backgroundColor = newColor;
                         markerDiv.style.color = textColor;
-                        markerDiv.className = `fire-extinguisher-marker marker-${newStatus}`;
+                        markerDiv.className = `station-marker marker-${newStatus}`;
                     }
                 }
             }
         });
     }
 
-    // NEW: Get priority alerts for dashboard
-    getPriorityAlerts() {
-        const alerts = [];
-        
-        this.fireExtinguishers.forEach(ext => {
-            const statusDetails = this.getStatusDetails(ext);
-            
-            if (ext.status === 'overdue' || ext.status === 'maintenance_required') {
-                alerts.push({
-                    type: ext.status === 'maintenance_required' ? 'critical' : 'warning',
-                    message: `${ext.id}: ${statusDetails.description}`,
-                    extinguisher: ext,
-                    priority: statusDetails.priority
-                });
-            }
-        });
-        
-        // Sort by priority (critical first, then by days overdue)
-        return alerts.sort((a, b) => {
-            if (a.type === 'critical' && b.type !== 'critical') return -1;
-            if (b.type === 'critical' && a.type !== 'critical') return 1;
-            return 0;
-        });
-    }
-    
     async loadData() {
-        console.log('Loading fire extinguisher data...');
+        console.log('Loading station data...');
         
         try {
-            // Try loading JSON first (primary data source)
             const data = await this.loadFromJSON();
             this.processLoadedData(data);
             console.log('Successfully loaded data from JSON file');
             return;
-            
         } catch (jsonError) {
             console.warn('JSON loading failed:', jsonError.message);
             
             try {
-                // Fallback to CSV file
                 const data = await this.loadFromCSV();
                 this.processLoadedData(data);
                 console.log('Successfully loaded data from CSV backup');
                 return;
-                
             } catch (csvError) {
                 console.error('Both JSON and CSV loading failed:', csvError.message);
-                
-                // No external data available - use empty arrays
                 console.log('No external data files available - starting with empty dataset');
                 this.buildings = [];
-                this.fireExtinguishers = [];
+                this.stations = [];
             }
         }
     }
 
     async loadFromJSON() {
-        const response = await fetch('fire-extinguishers.json');
-        
+        const response = await fetch('stations.json');
         if (!response.ok) {
             throw new Error(`HTTP error! Status: ${response.status}`);
         }
-        
         return await response.json();
     }
 
     async loadFromCSV() {
-        // First, ensure Papa Parse is available
         if (typeof Papa === 'undefined') {
             throw new Error('Papa Parse library not loaded');
         }
         
-        const response = await fetch('backup.csv');
-        
+        const response = await fetch('stations.csv');
         if (!response.ok) {
             throw new Error(`HTTP error! Status: ${response.status}`);
         }
@@ -297,126 +272,193 @@ class FireExtinguisherApp {
     }
 
     convertCSVToJSON(csvData) {
-        // Process CSV rows to match expected format
-        const extinguishers = csvData.map(row => ({
-            id: row.id || row.ID,
-            building: parseInt(row.building) || parseInt(row.Building),
-            x: parseFloat(row.x) || parseFloat(row.X),
-            y: parseFloat(row.y) || parseFloat(row.Y),
-            status: row.status || row.Status,
-            type: row.type || row.Type,
-            size: row.size || row.Size,
-            manufacturer: row.manufacturer || row.Manufacturer,
-            lastInspection: row.lastInspection || row['Last Inspection'],
-            nextDue: row.nextDue || row['Next Due']
-        }));
+        const stationMap = new Map();
         
-        // Dynamically create buildings from the data
-        const buildingMap = new Map();
-        extinguishers.forEach(ext => {
-            if (!buildingMap.has(ext.building)) {
-                buildingMap.set(ext.building, []);
+        // Group rows by stationId
+        csvData.forEach(row => {
+            const stationId = row.stationId || row.StationID;
+            if (!stationId) return;
+            
+            if (!stationMap.has(stationId)) {
+                stationMap.set(stationId, {
+                    stationId: stationId,
+                    building: parseInt(row.building) || parseInt(row.Building),
+                    x: parseFloat(row.x) || parseFloat(row.X),
+                    y: parseFloat(row.y) || parseFloat(row.Y),
+                    assets: []
+                });
             }
-            buildingMap.get(ext.building).push(ext);
+            
+            const station = stationMap.get(stationId);
+            const asset = {
+                assetId: row.assetId || row.AssetID,
+                assetType: row.assetType || row.AssetType || 'extinguisher',
+                type: row.type || row.Type,
+                size: row.size || row.Size,
+                manufacturer: row.manufacturer || row.Manufacturer,
+                lastInspection: this.parseDate(row.lastInspection || row['Last Inspection']),
+                nextDue: this.parseDate(row.nextDue || row['Next Due']),
+                isoCategory: row.isoCategory || row['ISO Category'] || this.determineISOCategory(row.type),
+                inspectionStickerID: row.inspectionStickerID || row['Inspection Sticker ID'] || 'STK-NOT-ASSIGNED',
+                status: row.status || row.Status || 'unknown'
+            };
+            
+            // Handle hoses differently
+            if (asset.assetType === 'hose') {
+                asset.length = asset.size;
+                asset.diameter = '25mm'; // Default diameter
+                delete asset.isoCategory;
+            }
+            
+            station.assets.push(asset);
+        });
+        
+        // Create buildings data
+        const buildingMap = new Map();
+        Array.from(stationMap.values()).forEach(station => {
+            if (!buildingMap.has(station.building)) {
+                buildingMap.set(station.building, []);
+            }
+            buildingMap.get(station.building).push(station);
         });
         
         const buildingColors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FECA57', '#FF9FF3'];
-        const buildings = Array.from(buildingMap.entries()).map(([id, exts], index) => ({
+        const buildings = Array.from(buildingMap.entries()).map(([id, stations], index) => ({
             id,
             name: `Building-${id}`,
-            extinguishers: exts.length,
+            stations: stations.length,
+            totalAssets: stations.reduce((sum, s) => sum + s.assets.length, 0),
             color: buildingColors[index % buildingColors.length]
         }));
         
         return {
             buildings,
-            extinguishers
+            stations: Array.from(stationMap.values())
         };
     }
 
-    // ENHANCED: Apply real-time status calculation
+    // Parse date with flexible format support
+    parseDate(dateString) {
+        if (!dateString) return null;
+        
+        const formats = [
+            /(\d{1,2})\/(\d{1,2})\/(\d{4})/,  // MM/DD/YYYY
+            /(\d{4})-(\d{1,2})-(\d{1,2})/,   // YYYY-MM-DD
+            /(\d{1,2})\.(\d{1,2})\.(\d{4})/  // DD.MM.YYYY
+        ];
+        
+        for (let format of formats) {
+            const match = dateString.match(format);
+            if (match) {
+                const year = match[3] || match[1];
+                const month = match[1] === year ? match[2] : match[1];
+                const day = match[1] === year ? match[3] : match[2];
+                
+                const date = new Date(year, month - 1, day);
+                return date.toISOString().split('T')[0];
+            }
+        }
+        
+        return dateString;
+    }
+
+    determineISOCategory(type) {
+        if (!type) return 1;
+        
+        const typeUpper = type.toString().toUpperCase();
+        
+        if (typeUpper === 'CO2' || typeUpper.startsWith('CO')) {
+            return 5;
+        } else if (typeUpper === 'FOAM') {
+            return 1;
+        } else if (typeUpper === 'POWDER') {
+            return 2;
+        } else if (typeUpper === 'WATER') {
+            return 1;
+        } else {
+            return 1;
+        }
+    }
+
     processLoadedData(data) {
         this.buildings = data.buildings || [];
         
-        // Add building metadata and calculate real-time status
-        this.fireExtinguishers = (data.extinguishers || []).map(ext => {
-            const building = this.buildings.find(b => b.id === ext.building);
+        this.stations = (data.stations || []).map(station => {
+            const building = this.buildings.find(b => b.id === station.building);
             
-            // Calculate real-time status based on current date
-            const realTimeStatus = this.calculateRealTimeStatus(ext);
+            // Calculate real-time status for all assets
+            station.assets.forEach(asset => {
+                asset.originalStatus = asset.status;
+                asset.status = this.calculateRealTimeStatus(asset);
+            });
             
             return {
-                ...ext,
-                originalStatus: ext.status,     // Keep original for reference
-                status: realTimeStatus,         // Use calculated real-time status
+                ...station,
                 buildingName: building ? building.name : 'Unknown Building',
-                buildingColor: building ? building.color : '#999999'
+                buildingColor: building ? building.color : '#999999',
+                status: this.getStationStatus(station)
             };
         });
         
-        console.log(`Loaded ${this.fireExtinguishers.length} fire extinguishers with real-time status calculation`);
+        console.log(`Loaded ${this.stations.length} stations with ${this.getTotalAssets()} total assets`);
     }
-    
+
+    getTotalAssets() {
+        return this.stations.reduce((total, station) => total + station.assets.length, 0);
+    }
+
     initMap() {
         console.log('Initializing map...');
         
-        // Create map with CRS.Simple for pixel-based coordinates
         this.map = L.map('map', {
             crs: L.CRS.Simple,
-            minZoom: -2,
-            maxZoom: 5,
+            minZoom: -3,
+            maxZoom: 3,
             zoomControl: true,
             attributionControl: false,
             preferCanvas: true
         });
         
-        // Load actual factory floor plan image
         const imageBounds = [[0, 0], [this.MAP_HEIGHT, this.MAP_WIDTH]];
         L.imageOverlay('map-layout.jpg', imageBounds).addTo(this.map);
-        
-        // Set initial view to fit the image
         this.map.fitBounds(imageBounds);
         
-        // Create markers layer
         this.markersLayer = L.layerGroup().addTo(this.map);
-        
-        // Add markers for all fire extinguishers
         this.addMarkers();
         
-        // Fit map to show all markers with padding
         setTimeout(() => {
             this.fitToMarkers();
         }, 100);
         
         console.log('Map initialized successfully');
     }
-    
+
     addMarkers() {
-        console.log(`Adding ${this.fireExtinguishers.length} markers...`);
+        console.log(`Adding ${this.stations.length} station markers...`);
         
-        this.fireExtinguishers.forEach(extinguisher => {
-            const marker = this.createMarker(extinguisher);
+        this.stations.forEach(station => {
+            const marker = this.createMarker(station);
             this.markersLayer.addLayer(marker);
         });
         
-        console.log('Markers added successfully');
+        console.log('Station markers added successfully');
     }
-    
-    createMarker(extinguisher) {
-        // Direct coordinate mapping - FIXED for proper positioning
-        const latLng = [this.MAP_HEIGHT - extinguisher.y, extinguisher.x];
+
+    createMarker(station) {
+        const latLng = [this.MAP_HEIGHT - station.y, station.x];
         
-        // Create custom marker with status color
-        const markerSize = 24;
-        const color = this.statusColors[extinguisher.status] || '#999999';
+        const markerSize = 28;
+        const stationStatus = this.getStationStatus(station);
+        const color = this.statusColors[stationStatus] || '#999999';
         const textColor = this.getContrastColor(color);
+        const label = station.stationId.replace('ST-', '').replace('-', '');
         
         const markerHtml = `
-            <div class="fire-extinguisher-marker marker-${extinguisher.status}" 
+            <div class="station-marker marker-${stationStatus}" 
                  style="width: ${markerSize}px; height: ${markerSize}px; background-color: ${color}; color: ${textColor}; 
                         border-radius: 50%; display: flex; align-items: center; justify-content: center; 
-                        font-weight: bold; font-size: 10px; border: 2px solid white;">
-                ${extinguisher.id.split('-')[1]}
+                        font-weight: bold; font-size: 11px; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">
+                ${label}
             </div>
         `;
         
@@ -429,72 +471,125 @@ class FireExtinguisherApp {
             })
         });
         
-        // Add popup with detailed information
-        const popupContent = this.createPopupContent(extinguisher);
+        const popupContent = this.createPopupContent(station);
         marker.bindPopup(popupContent, {
-            maxWidth: 300,
+            maxWidth: 450,
             className: 'custom-popup'
         });
         
-        // Add click handler
         marker.on('click', (e) => {
-            this.selectedExtinguisher = extinguisher;
+            this.selectedStation = station;
             marker.openPopup();
         });
         
-        // Store reference to extinguisher data
-        marker.extinguisher = extinguisher;
-        
+        marker.station = station;
         return marker;
     }
     
     getContrastColor(hexColor) {
-        // Convert hex to RGB
         const hex = hexColor.replace('#', '');
         const r = parseInt(hex.substr(0, 2), 16);
         const g = parseInt(hex.substr(2, 2), 16);
         const b = parseInt(hex.substr(4, 2), 16);
-        
-        // Calculate luminance
         const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-        
         return luminance > 0.5 ? '#000000' : '#FFFFFF';
     }
-    
-    // ENHANCED: Enhanced popup content with real-time information
-    createPopupContent(extinguisher) {
-        const statusDetails = this.getStatusDetails(extinguisher);
-        const statusColor = this.statusColors[extinguisher.status];
+
+    createPopupContent(station) {
+        const extinguishers = station.assets.filter(a => a.assetType === 'extinguisher');
+        const hoses = station.assets.filter(a => a.assetType === 'hose');
         
-        return `
-            <div style="min-width: 250px; font-family: Arial, sans-serif;">
-                <h3 style="margin: 0 0 8px 0; color: #333;">${extinguisher.id}</h3>
-                <p style="margin: 0 0 4px 0;"><strong>Building:</strong> ${extinguisher.buildingName}</p>
-                <p style="margin: 0 0 4px 0;"><strong>Type:</strong> ${extinguisher.type}</p>
-                <p style="margin: 0 0 4px 0;"><strong>Size:</strong> ${extinguisher.size}</p>
-                <p style="margin: 0 0 4px 0;"><strong>Manufacturer:</strong> ${extinguisher.manufacturer}</p>
-                <p style="margin: 0 0 8px 0;"><strong>Status:</strong> 
-                    <span style="color: ${statusColor}; font-weight: bold;">${statusDetails.label}</span>
-                </p>
-                <div style="background: #f5f5f5; padding: 8px; border-radius: 4px; margin: 8px 0;">
-                    <span style="font-size: 16px;">${statusDetails.icon}</span>
-                    <strong> ${statusDetails.description}</strong>
-                </div>
-                <p style="margin: 0 0 8px 0; font-size: 12px; color: #666;">
-                    Last: ${extinguisher.lastInspection} | Next: ${extinguisher.nextDue}
-                </p>
-                <button onclick="window.app.showExtinguisherDetails('${extinguisher.id}')" 
-                        style="background: #007cba; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;">
-                    View Details
+        let content = `
+            <div style="min-width: 400px; font-family: Arial, sans-serif;">
+                <h3 style="margin: 0 0 12px 0; color: var(--color-text);">${station.stationId}</h3>
+                <p style="margin: 0 0 8px 0;"><strong>Building:</strong> ${station.buildingName}</p>
+                <p style="margin: 0 0 16px 0;"><strong>Location:</strong> ${station.x}, ${station.y}</p>
+        `;
+        
+        if (extinguishers.length > 0) {
+            content += `
+                <h4 style="margin: 16px 0 8px 0; color: var(--color-text);">Fire Extinguishers (${extinguishers.length})</h4>
+                <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+                    <thead>
+                        <tr style="background: rgba(0,0,0,0.1);">
+                            <th style="padding: 4px; text-align: left; border: 1px solid #ddd;">ID</th>
+                            <th style="padding: 4px; text-align: left; border: 1px solid #ddd;">Type</th>
+                            <th style="padding: 4px; text-align: left; border: 1px solid #ddd;">Size</th>
+                            <th style="padding: 4px; text-align: left; border: 1px solid #ddd;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            extinguishers.forEach(ext => {
+                const statusColor = this.statusColors[ext.status];
+                const statusDetails = this.getStatusDetails(ext);
+                content += `
+                    <tr>
+                        <td style="padding: 4px; border: 1px solid #ddd; font-size: 10px;">${ext.assetId}</td>
+                        <td style="padding: 4px; border: 1px solid #ddd; font-size: 10px;">${ext.type}</td>
+                        <td style="padding: 4px; border: 1px solid #ddd; font-size: 10px;">${ext.size}</td>
+                        <td style="padding: 4px; border: 1px solid #ddd; font-size: 10px; color: ${statusColor};">
+                            ${statusDetails.icon}
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            content += `
+                    </tbody>
+                </table>
+            `;
+        }
+        
+        if (hoses.length > 0) {
+            content += `
+                <h4 style="margin: 16px 0 8px 0; color: var(--color-text);">Fire Hoses (${hoses.length})</h4>
+                <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+                    <thead>
+                        <tr style="background: rgba(0,0,0,0.1);">
+                            <th style="padding: 4px; text-align: left; border: 1px solid #ddd;">ID</th>
+                            <th style="padding: 4px; text-align: left; border: 1px solid #ddd;">Length</th>
+                            <th style="padding: 4px; text-align: left; border: 1px solid #ddd;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            hoses.forEach(hose => {
+                const statusColor = this.statusColors[hose.status];
+                const statusDetails = this.getStatusDetails(hose);
+                content += `
+                    <tr>
+                        <td style="padding: 4px; border: 1px solid #ddd; font-size: 10px;">${hose.assetId}</td>
+                        <td style="padding: 4px; border: 1px solid #ddd; font-size: 10px;">${hose.length}</td>
+                        <td style="padding: 4px; border: 1px solid #ddd; font-size: 10px; color: ${statusColor};">
+                            ${statusDetails.icon}
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            content += `
+                    </tbody>
+                </table>
+            `;
+        }
+        
+        content += `
+                <button onclick="window.app.showStationDetails('${station.stationId}')" 
+                        style="background: #007cba; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-top: 12px; width: 100%;">
+                    View Full Details
                 </button>
             </div>
         `;
+        
+        return content;
     }
-    
+
     setupEventListeners() {
         console.log('Setting up event listeners...');
         
-        // Search functionality
         const searchInput = document.getElementById('searchInput');
         const clearSearch = document.getElementById('clearSearch');
         const searchSuggestions = document.getElementById('searchSuggestions');
@@ -506,15 +601,8 @@ class FireExtinguisherApp {
                     this.handleSearch(e.target.value);
                 }, 200);
             });
-            
-            searchInput.addEventListener('focus', () => {
-                if (searchInput.value.trim()) {
-                    this.handleSearch(searchInput.value);
-                }
-            });
         }
         
-        // Hide suggestions when clicking outside
         document.addEventListener('click', (e) => {
             if (!e.target.closest('.search-container')) {
                 if (searchSuggestions) {
@@ -537,23 +625,20 @@ class FireExtinguisherApp {
         
         if (dashboardBtn) {
             dashboardBtn.addEventListener('click', () => {
-                console.log('Dashboard button clicked');
                 this.showModal('dashboardModal');
             });
         }
         
         if (buildingsBtn) {
             buildingsBtn.addEventListener('click', () => {
-                console.log('Buildings button clicked');
                 this.showModal('buildingsModal');
             });
         }
         
         if (infoBtn) {
             infoBtn.addEventListener('click', () => {
-                console.log('Info button clicked');
-                if (this.selectedExtinguisher) {
-                    this.showExtinguisherInfo(this.selectedExtinguisher);
+                if (this.selectedStation) {
+                    this.showStationInfo(this.selectedStation);
                 } else {
                     this.showModal('infoModal');
                 }
@@ -562,7 +647,6 @@ class FireExtinguisherApp {
         
         if (homeBtn) {
             homeBtn.addEventListener('click', () => {
-                console.log('Home button clicked');
                 this.clearSearch();
                 this.fitToMarkers();
             });
@@ -576,7 +660,6 @@ class FireExtinguisherApp {
             });
         });
         
-        // Close modals when clicking outside
         document.querySelectorAll('.modal').forEach(modal => {
             modal.addEventListener('click', (e) => {
                 if (e.target === modal) {
@@ -591,29 +674,19 @@ class FireExtinguisherApp {
         
         if (exportCSV) {
             exportCSV.addEventListener('click', () => {
-                console.log('Export CSV clicked');
                 this.exportData('csv');
             });
         }
         
         if (exportJSON) {
             exportJSON.addEventListener('click', () => {
-                console.log('Export JSON clicked');
                 this.exportData('json');
             });
         }
         
-        // Keyboard shortcuts
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                this.clearSearch();
-                this.hideAllModals();
-            }
-        });
-        
         console.log('Event listeners set up successfully');
     }
-    
+
     handleSearch(query) {
         const searchSuggestions = document.getElementById('searchSuggestions');
         
@@ -624,13 +697,35 @@ class FireExtinguisherApp {
             return;
         }
         
-        // Find matching extinguishers (fuzzy search)
-        const matches = this.fireExtinguishers.filter(ext => 
-            ext.id.toLowerCase().includes(query.toLowerCase()) ||
-            ext.buildingName.toLowerCase().includes(query.toLowerCase()) ||
-            ext.type.toLowerCase().includes(query.toLowerCase()) ||
-            ext.manufacturer.toLowerCase().includes(query.toLowerCase())
-        ).slice(0, 10);
+        // Search both stations and individual assets
+        const matches = [];
+        
+        this.stations.forEach(station => {
+            // Match station ID
+            if (station.stationId.toLowerCase().includes(query.toLowerCase())) {
+                matches.push({
+                    type: 'station',
+                    station: station,
+                    display: `${station.stationId} - ${station.buildingName}`,
+                    subtitle: `Station with ${station.assets.length} assets`
+                });
+            }
+            
+            // Match individual assets
+            station.assets.forEach(asset => {
+                if (asset.assetId.toLowerCase().includes(query.toLowerCase()) ||
+                    asset.type.toLowerCase().includes(query.toLowerCase()) ||
+                    asset.manufacturer.toLowerCase().includes(query.toLowerCase())) {
+                    matches.push({
+                        type: 'asset',
+                        station: station,
+                        asset: asset,
+                        display: `${asset.assetId} - ${station.stationId}`,
+                        subtitle: `${asset.assetType}: ${asset.type} ${asset.size}`
+                    });
+                }
+            });
+        });
         
         if (!searchSuggestions) return;
         
@@ -640,44 +735,32 @@ class FireExtinguisherApp {
             return;
         }
         
-        // Create suggestion items
-        searchSuggestions.innerHTML = matches.map(ext => `
-            <div class="suggestion-item" data-id="${ext.id}" tabindex="0">
-                <strong>${ext.id}</strong> - ${ext.buildingName}
-                <br><small style="color: #666;">${ext.type} (${ext.size}) - ${ext.manufacturer}</small>
+        searchSuggestions.innerHTML = matches.slice(0, 10).map(match => `
+            <div class="suggestion-item" data-station-id="${match.station.stationId}" tabindex="0">
+                <strong>${match.display}</strong>
+                <br><small style="color: #666;">${match.subtitle}</small>
             </div>
         `).join('');
         
         searchSuggestions.classList.add('visible');
         
-        // Add click and keyboard handlers to suggestions
         searchSuggestions.querySelectorAll('.suggestion-item').forEach(item => {
             item.addEventListener('click', () => {
-                const extinguisherId = item.getAttribute('data-id');
-                if (extinguisherId) {
-                    this.selectExtinguisher(extinguisherId);
-                }
-            });
-            
-            item.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
-                    const extinguisherId = item.getAttribute('data-id');
-                    if (extinguisherId) {
-                        this.selectExtinguisher(extinguisherId);
-                    }
+                const stationId = item.getAttribute('data-station-id');
+                if (stationId) {
+                    this.selectStation(stationId);
                 }
             });
         });
     }
-    
-    selectExtinguisher(extinguisherId) {
-        const extinguisher = this.findExtinguisher(extinguisherId);
-        if (!extinguisher) return;
+
+    selectStation(stationId) {
+        const station = this.findStation(stationId);
+        if (!station) return;
         
-        // Update search input
         const searchInput = document.getElementById('searchInput');
         if (searchInput) {
-            searchInput.value = extinguisher.id;
+            searchInput.value = station.stationId;
         }
         
         const searchSuggestions = document.getElementById('searchSuggestions');
@@ -685,31 +768,27 @@ class FireExtinguisherApp {
             searchSuggestions.classList.remove('visible');
         }
         
-        // Clear previous blinking marker
         this.clearBlinkingMarker();
         
-        // Find and highlight the marker
         this.markersLayer.eachLayer(layer => {
-            if (layer.extinguisher && layer.extinguisher.id === extinguisherId) {
-                // Add blinking animation
+            if (layer.station && layer.station.stationId === stationId) {
                 const markerElement = layer.getElement();
                 if (markerElement) {
-                    const markerDiv = markerElement.querySelector('.fire-extinguisher-marker');
+                    const markerDiv = markerElement.querySelector('.station-marker');
                     if (markerDiv) {
                         markerDiv.classList.add('marker-blinking');
                         this.blinkingMarker = markerDiv;
                     }
                 }
                 
-                // Zoom to marker - FIXED coordinate transformation
-                const latLng = [this.MAP_HEIGHT - extinguisher.y, extinguisher.x];
-                this.map.setView(latLng, 3);
+                const latLng = [this.MAP_HEIGHT - station.y, station.x];
+                this.map.setView(latLng, 1);
             }
         });
         
-        this.selectedExtinguisher = extinguisher;
+        this.selectedStation = station;
     }
-    
+
     clearSearch() {
         const searchInput = document.getElementById('searchInput');
         const searchSuggestions = document.getElementById('searchSuggestions');
@@ -722,21 +801,20 @@ class FireExtinguisherApp {
         }
         this.clearBlinkingMarker();
     }
-    
+
     clearBlinkingMarker() {
         if (this.blinkingMarker) {
             this.blinkingMarker.classList.remove('marker-blinking');
             this.blinkingMarker = null;
         }
     }
-    
-    findExtinguisher(id) {
-        return this.fireExtinguishers.find(ext => ext.id === id);
+
+    findStation(stationId) {
+        return this.stations.find(station => station.stationId === stationId);
     }
-    
+
     fitToMarkers() {
         if (this.markersLayer.getLayers().length === 0) {
-            // If no markers, just fit to the image bounds
             const imageBounds = [[0, 0], [this.MAP_HEIGHT, this.MAP_WIDTH]];
             this.map.fitBounds(imageBounds);
             return;
@@ -745,65 +823,51 @@ class FireExtinguisherApp {
         const group = new L.featureGroup(this.markersLayer.getLayers());
         this.map.fitBounds(group.getBounds().pad(0.1));
     }
-    
+
     showModal(modalId) {
         const modal = document.getElementById(modalId);
         if (modal) {
             modal.classList.add('visible');
-            console.log(`Modal ${modalId} opened`);
         }
     }
-    
+
     hideModal(modalId) {
         const modal = document.getElementById(modalId);
         if (modal) {
             modal.classList.remove('visible');
-            console.log(`Modal ${modalId} closed`);
         }
     }
-    
-    hideAllModals() {
-        document.querySelectorAll('.modal').forEach(modal => {
-            modal.classList.remove('visible');
-        });
-    }
-    
-    // ENHANCED: Enhanced updateStats with real-time calculations
+
     updateStats() {
         const stats = {
-            total: this.fireExtinguishers.length,
+            totalStations: this.stations.length,
+            totalAssets: this.getTotalAssets(),
             good: 0,
             inspection_due_soon: 0,
             overdue: 0,
             maintenance_required: 0
         };
         
-        this.fireExtinguishers.forEach(ext => {
-            // Recalculate status to ensure real-time accuracy
-            ext.status = this.calculateRealTimeStatus(ext);
-            stats[ext.status] = (stats[ext.status] || 0) + 1;
+        this.stations.forEach(station => {
+            station.assets.forEach(asset => {
+                asset.status = this.calculateRealTimeStatus(asset);
+                stats[asset.status] = (stats[asset.status] || 0) + 1;
+            });
         });
         
-        // Update dashboard elements
         const totalCount = document.getElementById('totalCount');
         const goodCount = document.getElementById('goodCount');
         const dueSoonCount = document.getElementById('dueSoonCount');
         const overdueCount = document.getElementById('overdueCount');
         const maintenanceCount = document.getElementById('maintenanceCount');
         
-        if (totalCount) totalCount.textContent = stats.total;
+        if (totalCount) totalCount.textContent = stats.totalAssets;
         if (goodCount) goodCount.textContent = stats.good;
         if (dueSoonCount) dueSoonCount.textContent = stats.inspection_due_soon;
         if (overdueCount) overdueCount.textContent = stats.overdue;
         if (maintenanceCount) maintenanceCount.textContent = stats.maintenance_required;
-        
-        // Update last refresh timestamp
-        const lastUpdate = document.getElementById('lastStatusUpdate');
-        if (lastUpdate) {
-            lastUpdate.textContent = `Last updated: ${new Date().toLocaleString()}`;
-        }
     }
-    
+
     populateBuildings() {
         const buildingsList = document.getElementById('buildingsList');
         
@@ -814,17 +878,21 @@ class FireExtinguisherApp {
             return;
         }
         
-        buildingsList.innerHTML = this.buildings.map(building => `
-            <div class="building-item" data-building="${building.id}" style="border-left: 4px solid ${building.color}; padding: 10px; margin: 5px 0; cursor: pointer;">
-                <h3>${building.name}</h3>
-                <p>${building.extinguishers} fire extinguishers</p>
-                <small style="color: #666;">
-                    ${this.getBuildingStats(building.id)}
-                </small>
-            </div>
-        `).join('');
+        buildingsList.innerHTML = this.buildings.map(building => {
+            const buildingStations = this.stations.filter(s => s.building === building.id);
+            const totalAssets = buildingStations.reduce((sum, s) => sum + s.assets.length, 0);
+            
+            return `
+                <div class="building-item" data-building="${building.id}" style="border-left: 4px solid ${building.color}; padding: 10px; margin: 5px 0; cursor: pointer;">
+                    <h3>${building.name}</h3>
+                    <p>${building.stations} stations / ${totalAssets} assets</p>
+                    <small style="color: #666;">
+                        ${this.getBuildingStats(building.id)}
+                    </small>
+                </div>
+            `;
+        }).join('');
         
-        // Add click handlers
         buildingsList.querySelectorAll('.building-item').forEach(item => {
             item.addEventListener('click', () => {
                 const buildingId = parseInt(item.getAttribute('data-building'));
@@ -833,9 +901,9 @@ class FireExtinguisherApp {
             });
         });
     }
-    
+
     getBuildingStats(buildingId) {
-        const buildingExtinguishers = this.fireExtinguishers.filter(ext => ext.building === buildingId);
+        const buildingStations = this.stations.filter(s => s.building === buildingId);
         const statusCounts = {
             good: 0,
             inspection_due_soon: 0,
@@ -843,151 +911,218 @@ class FireExtinguisherApp {
             maintenance_required: 0
         };
         
-        buildingExtinguishers.forEach(ext => {
-            statusCounts[ext.status] = (statusCounts[ext.status] || 0) + 1;
+        buildingStations.forEach(station => {
+            station.assets.forEach(asset => {
+                statusCounts[asset.status] = (statusCounts[asset.status] || 0) + 1;
+            });
         });
         
         return `${statusCounts.good} good, ${statusCounts.inspection_due_soon} due soon, ${statusCounts.overdue} overdue, ${statusCounts.maintenance_required} maintenance`;
     }
-    
+
     focusOnBuilding(buildingId) {
-        const buildingExtinguishers = this.fireExtinguishers.filter(ext => ext.building === buildingId);
+        const buildingStations = this.stations.filter(s => s.building === buildingId);
         
-        if (buildingExtinguishers.length === 0) return;
+        if (buildingStations.length === 0) return;
         
-        // Calculate center and bounds
-        const minX = Math.min(...buildingExtinguishers.map(ext => ext.x));
-        const maxX = Math.max(...buildingExtinguishers.map(ext => ext.x));
-        const minY = Math.min(...buildingExtinguishers.map(ext => ext.y));
-        const maxY = Math.max(...buildingExtinguishers.map(ext => ext.y));
+        const minX = Math.min(...buildingStations.map(s => s.x));
+        const maxX = Math.max(...buildingStations.map(s => s.x));
+        const minY = Math.min(...buildingStations.map(s => s.y));
+        const maxY = Math.max(...buildingStations.map(s => s.y));
         
         const centerX = (minX + maxX) / 2;
         const centerY = (minY + maxY) / 2;
         
-        // Convert to leaflet coordinates - FIXED
         const latLng = [this.MAP_HEIGHT - centerY, centerX];
-        this.map.setView(latLng, 2);
+        this.map.setView(latLng, -1);
     }
-    
-    showExtinguisherDetails(extinguisherId) {
-        const extinguisher = this.findExtinguisher(extinguisherId);
-        if (extinguisher) {
-            this.selectedExtinguisher = extinguisher;
-            this.showExtinguisherInfo(extinguisher);
+
+    showStationDetails(stationId) {
+        const station = this.findStation(stationId);
+        if (station) {
+            this.selectedStation = station;
+            this.showStationInfo(station);
         }
     }
-    
-    showExtinguisherInfo(extinguisher) {
-        const extinguisherInfo = document.getElementById('extinguisherInfo');
+
+    showStationInfo(station) {
+        const stationInfo = document.getElementById('extinguisherInfo');
         
-        if (!extinguisherInfo) return;
+        if (!stationInfo) return;
         
-        if (!extinguisher) {
-            extinguisherInfo.innerHTML = 
-                '<p>No fire extinguisher selected. Click on a marker to view details.</p>';
+        if (!station) {
+            stationInfo.innerHTML = '<p>No station selected. Click on a marker to view details.</p>';
             this.showModal('infoModal');
             return;
         }
         
-        const statusDetails = this.getStatusDetails(extinguisher);
-        const statusColor = this.statusColors[extinguisher.status] || '#999999';
+        const extinguishers = station.assets.filter(a => a.assetType === 'extinguisher');
+        const hoses = station.assets.filter(a => a.assetType === 'hose');
         
-        extinguisherInfo.innerHTML = `
-            <div class="extinguisher-details">
+        let content = `
+            <div class="station-details">
                 <div class="detail-group">
-                    <h3>Basic Information</h3>
+                    <h3>Station Information</h3>
                     <div class="detail-row">
-                        <span class="detail-label">ID:</span>
-                        <span class="detail-value">${extinguisher.id}</span>
+                        <span class="detail-label">Station ID:</span>
+                        <span class="detail-value">${station.stationId}</span>
                     </div>
                     <div class="detail-row">
                         <span class="detail-label">Building:</span>
-                        <span class="detail-value">${extinguisher.buildingName}</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="detail-label">Type:</span>
-                        <span class="detail-value">${extinguisher.type}</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="detail-label">Size:</span>
-                        <span class="detail-value">${extinguisher.size}</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="detail-label">Manufacturer:</span>
-                        <span class="detail-value">${extinguisher.manufacturer}</span>
+                        <span class="detail-value">${station.buildingName}</span>
                     </div>
                     <div class="detail-row">
                         <span class="detail-label">Location:</span>
-                        <span class="detail-value">${extinguisher.x}, ${extinguisher.y}</span>
+                        <span class="detail-value">${station.x}, ${station.y}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Total Assets:</span>
+                        <span class="detail-value">${station.assets.length}</span>
                     </div>
                 </div>
-                
-                <div class="detail-group">
-                    <h3>Real-Time Status & Inspection</h3>
-                    <div class="detail-row">
-                        <span class="detail-label">Status:</span>
-                        <span class="detail-value" style="color: ${statusColor}; font-weight: bold;">${statusDetails.label}</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="detail-label">Description:</span>
-                        <span class="detail-value">${statusDetails.description}</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="detail-label">Priority:</span>
-                        <span class="detail-value">${statusDetails.priority.toUpperCase()}</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="detail-label">Last Inspection:</span>
-                        <span class="detail-value">${extinguisher.lastInspection}</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="detail-label">Next Due:</span>
-                        <span class="detail-value">${extinguisher.nextDue}</span>
-                    </div>
-                </div>
-            </div>
         `;
         
+        if (extinguishers.length > 0) {
+            content += `
+                <div class="detail-group">
+                    <h3>Fire Extinguishers (${extinguishers.length})</h3>
+            `;
+            
+            extinguishers.forEach(ext => {
+                const statusDetails = this.getStatusDetails(ext);
+                const statusColor = this.statusColors[ext.status];
+                
+                content += `
+                    <div style="border: 1px solid var(--color-border); border-radius: 8px; padding: 12px; margin-bottom: 8px;">
+                        <div class="detail-row">
+                            <span class="detail-label">Asset ID:</span>
+                            <span class="detail-value">${ext.assetId}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Type:</span>
+                            <span class="detail-value">${ext.type} (${ext.size})</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Manufacturer:</span>
+                            <span class="detail-value">${ext.manufacturer}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">ISO Category:</span>
+                            <span class="detail-value">${ext.isoCategory}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Status:</span>
+                            <span class="detail-value" style="color: ${statusColor}; font-weight: bold;">
+                                ${statusDetails.icon} ${statusDetails.label}
+                            </span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Next Due:</span>
+                            <span class="detail-value">${ext.nextDue}</span>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            content += `</div>`;
+        }
+        
+        if (hoses.length > 0) {
+            content += `
+                <div class="detail-group">
+                    <h3>Fire Hoses (${hoses.length})</h3>
+            `;
+            
+            hoses.forEach(hose => {
+                const statusDetails = this.getStatusDetails(hose);
+                const statusColor = this.statusColors[hose.status];
+                
+                content += `
+                    <div style="border: 1px solid var(--color-border); border-radius: 8px; padding: 12px; margin-bottom: 8px;">
+                        <div class="detail-row">
+                            <span class="detail-label">Asset ID:</span>
+                            <span class="detail-value">${hose.assetId}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Length:</span>
+                            <span class="detail-value">${hose.length}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Manufacturer:</span>
+                            <span class="detail-value">${hose.manufacturer}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Status:</span>
+                            <span class="detail-value" style="color: ${statusColor}; font-weight: bold;">
+                                ${statusDetails.icon} ${statusDetails.label}
+                            </span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Next Due:</span>
+                            <span class="detail-value">${hose.nextDue}</span>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            content += `</div>`;
+        }
+        
+        content += `</div>`;
+        
+        stationInfo.innerHTML = content;
         this.showModal('infoModal');
     }
-    
+
     exportData(format) {
         const timestamp = new Date().toISOString().split('T')[0];
         
         if (format === 'csv') {
-            const csv = this.convertToCSV(this.fireExtinguishers);
-            this.downloadFile(csv, `fire_extinguishers_${timestamp}.csv`, 'text/csv');
+            const csv = this.convertToCSV();
+            this.downloadFile(csv, `fire_safety_stations_${timestamp}.csv`, 'text/csv');
         } else if (format === 'json') {
             const exportData = {
                 exported_at: new Date().toISOString(),
-                total_count: this.fireExtinguishers.length,
+                total_stations: this.stations.length,
+                total_assets: this.getTotalAssets(),
                 buildings: this.buildings,
-                fire_extinguishers: this.fireExtinguishers.map(ext => ({
-                    ...ext,
-                    real_time_status: ext.status,
-                    original_status: ext.originalStatus
-                }))
+                stations: this.stations
             };
             const json = JSON.stringify(exportData, null, 2);
-            this.downloadFile(json, `fire_extinguishers_${timestamp}.json`, 'application/json');
+            this.downloadFile(json, `fire_safety_stations_${timestamp}.json`, 'application/json');
         }
     }
-    
-    convertToCSV(data) {
-        const headers = ['id', 'building', 'buildingName', 'x', 'y', 'real_time_status', 'original_status', 'type', 'size', 'manufacturer', 'lastInspection', 'nextDue'];
-        const csvContent = [
-            headers.join(','),
-            ...data.map(row => headers.map(header => {
-                const value = header === 'real_time_status' ? row.status : 
-                            header === 'original_status' ? row.originalStatus : 
-                            row[header];
-                return `"${value || ''}"`;
-            }).join(','))
-        ].join('\n');
+
+    convertToCSV() {
+        const headers = ['stationId', 'building', 'buildingName', 'x', 'y', 'assetId', 'assetType', 'type', 'size', 'manufacturer', 'isoCategory', 'inspectionStickerID', 'status', 'lastInspection', 'nextDue'];
+        const rows = [];
         
-        return csvContent;
+        this.stations.forEach(station => {
+            station.assets.forEach(asset => {
+                const row = [
+                    station.stationId,
+                    station.building,
+                    station.buildingName,
+                    station.x,
+                    station.y,
+                    asset.assetId,
+                    asset.assetType,
+                    asset.type,
+                    asset.size,
+                    asset.manufacturer || '',
+                    asset.isoCategory || '',
+                    asset.inspectionStickerID || '',
+                    asset.status,
+                    asset.lastInspection,
+                    asset.nextDue
+                ];
+                rows.push(row.map(val => `"${val || ''}"`).join(','));
+            });
+        });
+        
+        return [headers.join(','), ...rows].join('\n');
     }
-    
+
     downloadFile(content, filename, contentType) {
         const blob = new Blob([content], { type: contentType });
         const url = URL.createObjectURL(blob);
@@ -999,15 +1134,15 @@ class FireExtinguisherApp {
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
     }
-    
+
     showError(message) {
         console.error(message);
         alert(message);
     }
 }
 
-// Initialize the application when DOM is loaded
+// Initialize the application
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('DOM loaded, initializing app with complete real-time status...');
-    window.app = new FireExtinguisherApp();
+    console.log('DOM loaded, initializing Fire Safety Station Manager...');
+    window.app = new FireSafetyStationApp();
 });
