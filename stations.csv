@@ -1,8 +1,8 @@
 stationId,building,x,y,assetId,assetType,type,size,manufacturer,lastInspection,nextDue,isoCategory,inspectionStickerID,status
 ST-1-001,1,6724,4285,1-001-1,extinguisher,CO2,7.700kg,137 | 9963,10/1/2025,10/1/2026,5,233886,good
-ST-1-001,1,6724,4285,1-001-2,extinguisher,Powder,9.900kg,136 | ???????,10/1/2025,10/1/2026,2,233885,good
+ST-1-001,1,6724,4285,1-001-2,extinguisher,Powder,9.900kg,136 | TORNADO,10/1/2025,10/1/2026,2,233885,good
 ST-1-002,1,6235,4424,1-002-1,extinguisher,CO2,6.950kg,133 | 10116,10/1/2025,10/1/2026,5,233882,good
-ST-1-002,1,6235,4424,1-002-2,extinguisher,Powder,9.100kg,132 | ???????,10/1/2025,10/1/2026,2,233881,good
+ST-1-002,1,6235,4424,1-002-2,extinguisher,Powder,9.100kg,132 | TORNADO,10/1/2025,10/1/2026,2,233881,good
 ST-1-002,1,6235,4424,1-002-3,extinguisher,CO2,6.800kg,131 | 10871,10/1/2025,10/1/2026,5,233880,good
 ST-1-004,1,6645,4177,1-004,extinguisher,CO2,16.000kg,138 | 5284,10/1/2025,10/1/2026,5,233887,good
 ST-1-005,1,6837,4139,1-M07,hose,Water,-,-,9/30/2024,9/30/2025,1,STK-HOSE-002,good
