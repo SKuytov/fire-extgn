@@ -687,72 +687,75 @@ class FireSafetyStationApp {
         console.log('Event listeners set up successfully');
     }
 
-    handleSearch(query) {
-        const searchSuggestions = document.getElementById('searchSuggestions');
-        
-        if (!query.trim()) {
-            if (searchSuggestions) {
-                searchSuggestions.classList.remove('visible');
-            }
-            return;
+    // This script improves the search functionality by normalizing case and handling undefined fields
+handleSearch(query) {
+    const searchSuggestions = document.getElementById('searchSuggestions');
+
+    if (!query.trim()) {
+        if (searchSuggestions) {
+            searchSuggestions.classList.remove('visible');
+            searchSuggestions.innerHTML = '';
         }
-        
-        // Search both stations and individual assets
-        const matches = [];
-        
-        this.stations.forEach(station => {
-            // Match station ID
-            if (station.stationId.toLowerCase().includes(query.toLowerCase())) {
+        return;
+    }
+
+    const lowerQuery = query.toLowerCase();
+    const matches = [];
+
+    this.stations.forEach(station => {
+        if (station.stationId && station.stationId.toLowerCase().includes(lowerQuery)) {
+            matches.push({
+                type: 'station',
+                station: station,
+                display: `${station.stationId} - ${station.buildingName}`,
+                subtitle: `Station with ${station.assets.length} assets`
+            });
+        }
+
+        station.assets.forEach(asset => {
+            const assetId = asset.assetId ? asset.assetId.toLowerCase() : '';
+            const type = asset.type ? asset.type.toLowerCase() : '';
+            const manufacturer = asset.manufacturer ? asset.manufacturer.toLowerCase() : '';
+
+            if (assetId.includes(lowerQuery) || type.includes(lowerQuery) || manufacturer.includes(lowerQuery)) {
                 matches.push({
-                    type: 'station',
+                    type: 'asset',
                     station: station,
-                    display: `${station.stationId} - ${station.buildingName}`,
-                    subtitle: `Station with ${station.assets.length} assets`
+                    asset: asset,
+                    display: `${asset.assetId} - ${station.stationId}`,
+                    subtitle: `${asset.assetType}: ${asset.type} ${asset.size}`
                 });
             }
-            
-            // Match individual assets
-            station.assets.forEach(asset => {
-                if (asset.assetId.toLowerCase().includes(query.toLowerCase()) ||
-                    asset.type.toLowerCase().includes(query.toLowerCase()) ||
-                    asset.manufacturer.toLowerCase().includes(query.toLowerCase())) {
-                    matches.push({
-                        type: 'asset',
-                        station: station,
-                        asset: asset,
-                        display: `${asset.assetId} - ${station.stationId}`,
-                        subtitle: `${asset.assetType}: ${asset.type} ${asset.size}`
-                    });
-                }
-            });
         });
-        
-        if (!searchSuggestions) return;
-        
-        if (matches.length === 0) {
-            searchSuggestions.innerHTML = '<div class="suggestion-item">No results found</div>';
-            searchSuggestions.classList.add('visible');
-            return;
-        }
-        
-        searchSuggestions.innerHTML = matches.slice(0, 10).map(match => `
-            <div class="suggestion-item" data-station-id="${match.station.stationId}" tabindex="0">
-                <strong>${match.display}</strong>
-                <br><small style="color: #666;">${match.subtitle}</small>
-            </div>
-        `).join('');
-        
+    });
+
+    if (!searchSuggestions) return;
+
+    if (matches.length === 0) {
+        searchSuggestions.innerHTML = '<div class="suggestion-item">No results found</div>';
         searchSuggestions.classList.add('visible');
-        
-        searchSuggestions.querySelectorAll('.suggestion-item').forEach(item => {
-            item.addEventListener('click', () => {
-                const stationId = item.getAttribute('data-station-id');
-                if (stationId) {
-                    this.selectStation(stationId);
-                }
-            });
-        });
+        return;
     }
+
+    searchSuggestions.innerHTML = matches.slice(0, 10).map(match => `
+        <div class="suggestion-item" data-station-id="${match.station.stationId}" tabindex="0">
+            <strong>${match.display}</strong>
+            <br><small style="color: #666;">${match.subtitle}</small>
+        </div>
+    `).join('');
+
+    searchSuggestions.classList.add('visible');
+
+    searchSuggestions.querySelectorAll('.suggestion-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const stationId = item.getAttribute('data-station-id');
+            if (stationId) {
+                this.selectStation(stationId);
+            }
+        });
+    });
+}
+
 
     selectStation(stationId) {
         const station = this.findStation(stationId);
